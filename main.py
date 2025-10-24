@@ -25,6 +25,11 @@ PHRASE_TIME_LIMIT = 10   # max seconds for a single phrase
 MAX_FAILED_ATTEMPTS = 3  # stop after this many consecutive failures
 AMBIENT_NOISE_DURATION = 1  # seconds to adjust for ambient noise
 
+# Voice settings
+VOICE_RATE = 150        # Speed of speech (default: 200, lower = slower)
+VOICE_VOLUME = 1.0      # Volume (0.0 to 1.0)
+VOICE_PITCH = 50        # Pitch/tone (0-100, lower = deeper/heavier)
+
 # Ensure notes folder exists
 if not os.path.exists(notes_folder):
     os.makedirs(notes_folder)
@@ -272,9 +277,35 @@ def recognised_speech_from_microphone():
             print(f"❌ Unexpected error: {e}")
             return None, "error"
 def say(text):
-    engine = pyttsx3.init() # Initialize pyttsx3 engine
-    engine.say(text)         # prepares text to be spoken
-    engine.runAndWait()      # wait until text is spoken
+    """Text-to-speech with customizable voice settings"""
+    engine = pyttsx3.init()
+
+    # Set voice properties for heavier/deeper voice
+    engine.setProperty('rate', VOICE_RATE)      # Speed of speech
+    engine.setProperty('volume', VOICE_VOLUME)  # Volume level
+
+    # Try to set a male/deeper voice if available
+    voices = engine.getProperty('voices')
+
+    # Priority order for deeper male voices
+    preferred_voices = ['david', 'mark', 'george']  # David is deepest on Windows
+
+    male_voice_found = False
+    for preferred in preferred_voices:
+        for voice in voices:
+            if preferred in voice.name.lower():
+                engine.setProperty('voice', voice.id)
+                male_voice_found = True
+                break
+        if male_voice_found:
+            break
+
+    # If no preferred voice found, use the first available (usually male on Windows)
+    if not male_voice_found and len(voices) > 0:
+        engine.setProperty('voice', voices[0].id)
+
+    engine.say(text)
+    engine.runAndWait()
 
 if __name__ == "__main__":
     print("=" * 60)
