@@ -148,6 +148,11 @@ def parse_calculation(text):
             expr = expr.replace("multiplied by", "*")
             expr = expr.replace("divided by", "/")
             return expr
+
+    # Check if the text itself is just a math expression (like "5 + 5")
+    if re.match(r'^[\d\s+\-*/().]+$', text.strip()):
+        return text.strip()
+
     return None
 
 # File Operations
@@ -226,6 +231,13 @@ if __name__ == "__main__":
     print("=" * 60)
     print("Hello I am Eight - Your Intelligent Productivity Assistant")
     print("=" * 60)
+
+    # Check API key
+    if not apikey or apikey.startswith("sk-HduWd") or len(apikey) < 20:
+        print("\n⚠️  WARNING: Invalid or default API key detected!")
+        print("AI features will not work. Please update your API key in config.py")
+        print("Get your API key from: https://platform.openai.com/api-keys\n")
+
     say("Hello I am Eight, your intelligent productivity assistant")
 
     sites=[["youtube","https://www.youtube.com/"],["netflix","https://www.netflix.com/browse"],["google","https://www.google.co.in/"]]
@@ -315,8 +327,8 @@ if __name__ == "__main__":
                     say("You have no saved notes")
                     print("No notes found")
 
-            # Calculator
-            elif any(word in text_lower for word in ["calculate", "what is", "solve"]):
+            # Calculator - Check for math expressions first
+            elif any(word in text_lower for word in ["calculate", "what is", "solve"]) or re.match(r'^[\d\s+\-*/().]+$', recognise_text.strip()):
                 expr = parse_calculation(recognise_text)
                 if expr:
                     result = calculate(expr)
@@ -378,10 +390,11 @@ if __name__ == "__main__":
             # AI for everything else (general questions)
             else:
                 print(f"AI Query: {recognise_text}")
-                say("Let me think about that")
                 response = ai(prompt=recognise_text)
                 if response:
                     say(response)
+                else:
+                    say("I'm having trouble connecting to AI services. Please check the API key in config.py")
         else:
             print("Eight: No speech detected. Listening again...")
             # Continue listening instead of breaking
