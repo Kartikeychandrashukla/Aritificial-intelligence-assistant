@@ -130,6 +130,21 @@ def calculate(expression):
 
 def parse_calculation(text):
     """Extract calculation from voice command"""
+    text_original = text
+    text_lower = text.lower()
+
+    # Convert spoken words to symbols FIRST
+    text_converted = text_lower
+    text_converted = text_converted.replace("plus", "+")
+    text_converted = text_converted.replace("add", "+")
+    text_converted = text_converted.replace("minus", "-")
+    text_converted = text_converted.replace("subtract", "-")
+    text_converted = text_converted.replace("times", "*")
+    text_converted = text_converted.replace("multiplied by", "*")
+    text_converted = text_converted.replace("multiply", "*")
+    text_converted = text_converted.replace("divided by", "/")
+    text_converted = text_converted.replace("divide", "/")
+
     # Patterns: "calculate [expression]", "what is [expression]"
     patterns = [
         r"calculate\s+(.*)",
@@ -138,20 +153,18 @@ def parse_calculation(text):
     ]
 
     for pattern in patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
+        match = re.search(pattern, text_converted, re.IGNORECASE)
         if match:
             expr = match.group(1).strip()
-            # Convert spoken words to symbols
-            expr = expr.replace("plus", "+")
-            expr = expr.replace("minus", "-")
-            expr = expr.replace("times", "*")
-            expr = expr.replace("multiplied by", "*")
-            expr = expr.replace("divided by", "/")
             return expr
 
-    # Check if the text itself is just a math expression (like "5 + 5")
-    if re.match(r'^[\d\s+\-*/().]+$', text.strip()):
-        return text.strip()
+    # Check if the converted text is a math expression
+    if re.match(r'^[\d\s+\-*/().]+$', text_converted.strip()):
+        return text_converted.strip()
+
+    # Check if original text is already a math expression (like "5 + 5")
+    if re.match(r'^[\d\s+\-*/().]+$', text_original.strip()):
+        return text_original.strip()
 
     return None
 
@@ -327,8 +340,9 @@ if __name__ == "__main__":
                     say("You have no saved notes")
                     print("No notes found")
 
-            # Calculator - Check for math expressions first
-            elif any(word in text_lower for word in ["calculate", "what is", "solve"]) or re.match(r'^[\d\s+\-*/().]+$', recognise_text.strip()):
+            # Calculator - Check for math expressions and spoken math words
+            elif (any(word in text_lower for word in ["calculate", "what is", "solve", "plus", "minus", "times", "multiply", "divide", "add", "subtract"])
+                  or re.match(r'^[\d\s+\-*/().]+$', recognise_text.strip())):
                 expr = parse_calculation(recognise_text)
                 if expr:
                     result = calculate(expr)
@@ -338,7 +352,17 @@ if __name__ == "__main__":
                     else:
                         say("I couldn't calculate that")
                 else:
-                    say("Please provide a calculation")
+                    # If parse failed, it might be an AI question starting with "what is"
+                    if "what is" in text_lower and not any(op in text_lower for op in ["plus", "minus", "times", "multiply", "divide", "+", "-", "*", "/"]):
+                        # Pass to AI instead
+                        print(f"AI Query: {recognise_text}")
+                        response = ai(prompt=recognise_text)
+                        if response:
+                            say(response)
+                        else:
+                            say("I'm having trouble connecting to AI services. Please check the API key in config.py")
+                    else:
+                        say("Please provide a calculation")
 
             # File Operations
             elif "list files" in text_lower:
