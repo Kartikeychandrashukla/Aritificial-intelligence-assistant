@@ -19,6 +19,12 @@ from config import apikey
 reminders = []
 notes_folder = "eight_notes"
 
+# Speech recognition settings
+RECOGNITION_TIMEOUT = 5  # seconds to wait for speech to start
+PHRASE_TIME_LIMIT = 10   # max seconds for a single phrase
+MAX_FAILED_ATTEMPTS = 3  # stop after this many consecutive failures
+AMBIENT_NOISE_DURATION = 1  # seconds to adjust for ambient noise
+
 # Ensure notes folder exists
 if not os.path.exists(notes_folder):
     os.makedirs(notes_folder)
@@ -144,6 +150,8 @@ def parse_calculation(text):
     text_converted = text_converted.replace("multiply", "*")
     text_converted = text_converted.replace("divided by", "/")
     text_converted = text_converted.replace("divide", "/")
+    # Handle 'x' as multiplication (like "5 x 3")
+    text_converted = re.sub(r'\b(\d+)\s*x\s*(\d+)\b', r'\1 * \2', text_converted)
 
     # Patterns: "calculate [expression]", "what is [expression]"
     patterns = [
@@ -213,28 +221,56 @@ def list_files(directory="."):
         print(f"Error listing files: {e}")
         return []
 def recognised_speech_from_microphone():
+    """
+    Improved speech recognition with configurable timeout and phrase limits
+    Returns: tuple (text, error_type) where error_type is None on success
+    """
     recognizer = sr.Recognizer()
-    microphone = sr.Microphone()
+
+    # Adjust recognizer settings for better performance
+    recognizer.energy_threshold = 4000  # Adjust based on ambient noise
+    recognizer.dynamic_energy_threshold = True
+    recognizer.pause_threshold = 0.8  # seconds of silence to consider phrase complete
+
+    try:
+        microphone = sr.Microphone()
+    except Exception as e:
+        print(f"ERROR: Could not access microphone - {e}")
+        return None, "microphone_error"
 
     with microphone as source:
-        print("Checking for ambient noises wait for 2s" )
-        recognizer.adjust_for_ambient_noise(source, duration=2)
+        print("Listening... (speak now)")
+        recognizer.adjust_for_ambient_noise(source, duration=AMBIENT_NOISE_DURATION)
 
         try:
-         audio = recognizer.listen(source, timeout=5)  # to recognize audio
-         print("Recognizing...")
-         text = recognizer.recognize_google(audio)   # audio is converted into text form
-         print(f"You said: {text}")
-         return text
+            # Listen with timeout and phrase time limit
+            audio = recognizer.listen(
+                source,
+                timeout=RECOGNITION_TIMEOUT,
+                phrase_time_limit=PHRASE_TIME_LIMIT
+            )
+            print("Processing speech...")
+
+            # Convert audio to text using Google Speech Recognition
+            text = recognizer.recognize_google(audio)
+            print(f"✓ You said: {text}")
+            return text, None
+
         except sr.WaitTimeoutError:
-         print("NO speech detected")
-         return None
-        except sr.RequestError:
-         print("API was unreachable or unresponsive.")
-         return None
+            print("⏱ No speech detected (timeout)")
+            return None, "timeout"
+
+        except sr.UnknownValueError:
+            print("❌ Could not understand audio")
+            return None, "unknown"
+
+        except sr.RequestError as e:
+            print(f"❌ Speech recognition service error: {e}")
+            return None, "service_error"
+
         except Exception as e:
-         print("some exception has occured from eight")
-         return None
+            print(f"❌ Unexpected error: {e}")
+            return None, "error"
 def say(text):
     engine = pyttsx3.init() # Initialize pyttsx3 engine
     engine.say(text)         # prepares text to be spoken
@@ -264,11 +300,17 @@ if __name__ == "__main__":
     print("- Files: 'list files', 'search file [name]', 'create file [name]'")
     print("- AI: Ask any question naturally")
     print("- Stop: 'stop' or 'exit'")
+    print("=" * 60)
+    print(f"\nSettings: Timeout={RECOGNITION_TIMEOUT}s, Max fails before auto-stop={MAX_FAILED_ATTEMPTS}")
     print("=" * 60 + "\n")
 
+    failed_attempts = 0
+
     while True:
-        recognise_text = recognised_speech_from_microphone()
-        if recognise_text:  # if recognised text is not empty and none
+        recognise_text, error_type = recognised_speech_from_microphone()
+
+        if recognise_text:  # Successfully recognized speech
+            failed_attempts = 0  # Reset counter on success
             text_lower = recognise_text.lower()
 
             # Stop command
@@ -279,7 +321,8 @@ if __name__ == "__main__":
             # Calculator - Check FIRST to avoid conflict with "time" keyword
             elif (any(word in text_lower for word in ["calculate", "solve", "plus", "minus", "times", "multiply", "divide", "add", "subtract"])
                   or re.match(r'^[\d\s+\-*/().]+$', recognise_text.strip())
-                  or (any(op in recognise_text for op in ['+', '-', '*', '/']) and any(c.isdigit() for c in recognise_text))):
+                  or (any(op in recognise_text for op in ['+', '-', '*', '/']) and any(c.isdigit() for c in recognise_text))
+                  or re.search(r'\d+\s*x\s*\d+', text_lower)):
                 expr = parse_calculation(recognise_text)
                 if expr:
                     result = calculate(expr)
@@ -419,6 +462,32 @@ if __name__ == "__main__":
                     say(response)
                 else:
                     say("I'm having trouble connecting to AI services. Please check the API key in config.py")
+
         else:
-            print("Eight: No speech detected. Listening again...")
-            # Continue listening instead of breaking
+            # Handle recognition failures
+            failed_attempts += 1
+
+            if error_type == "timeout":
+                print(f"⚠️  Attempt {failed_attempts}/{MAX_FAILED_ATTEMPTS}: Waiting for speech...")
+            elif error_type == "unknown":
+                print(f"⚠️  Attempt {failed_attempts}/{MAX_FAILED_ATTEMPTS}: Could not understand")
+            elif error_type == "service_error":
+                print(f"⚠️  Attempt {failed_attempts}/{MAX_FAILED_ATTEMPTS}: Service connection issue")
+                failed_attempts += 1  # Count service errors double
+            elif error_type == "microphone_error":
+                print("❌ Critical: Cannot access microphone!")
+                say("Cannot access microphone. Exiting.")
+                break
+
+            # Check if we should stop
+            if failed_attempts >= MAX_FAILED_ATTEMPTS:
+                print(f"\n❌ Too many failed attempts ({failed_attempts}). Stopping Eight.")
+                print("Tips:")
+                print("  - Speak clearly and closer to the microphone")
+                print("  - Check your internet connection (required for speech recognition)")
+                print("  - Reduce background noise")
+                say("Too many failed attempts. Goodbye!")
+                break
+
+            # Brief pause before next attempt
+            time.sleep(0.5)
