@@ -276,6 +276,30 @@ if __name__ == "__main__":
                 say("Goodbye! Have a great day!")
                 break
 
+            # Calculator - Check FIRST to avoid conflict with "time" keyword
+            elif (any(word in text_lower for word in ["calculate", "solve", "plus", "minus", "times", "multiply", "divide", "add", "subtract"])
+                  or re.match(r'^[\d\s+\-*/().]+$', recognise_text.strip())
+                  or (any(op in recognise_text for op in ['+', '-', '*', '/']) and any(c.isdigit() for c in recognise_text))):
+                expr = parse_calculation(recognise_text)
+                if expr:
+                    result = calculate(expr)
+                    if result is not None:
+                        say(f"The answer is {result}")
+                        print(f"Calculation: {expr} = {result}")
+                    else:
+                        say("I couldn't calculate that")
+                else:
+                    # If parse failed and it has "what is", pass to AI
+                    if "what is" in text_lower and not any(op in text_lower for op in ["plus", "minus", "times", "multiply", "divide", "+", "-", "*", "/"]):
+                        print(f"AI Query: {recognise_text}")
+                        response = ai(prompt=recognise_text)
+                        if response:
+                            say(response)
+                        else:
+                            say("I'm having trouble connecting to AI services. Please check the API key in config.py")
+                    else:
+                        say("Please provide a calculation")
+
             # Open websites
             elif "open" in text_lower:
                 for site in sites:
@@ -284,8 +308,8 @@ if __name__ == "__main__":
                         webbrowser.open(site[1])
                         break
 
-            # Time
-            elif "time" in text_lower:
+            # Time - more specific check to avoid conflict with "times"
+            elif ("what" in text_lower and "time" in text_lower) or "current time" in text_lower or text_lower.strip() == "time":
                 hour = datetime.datetime.now().strftime("%H")
                 minutes = datetime.datetime.now().strftime("%M")
                 say(f"the time is {hour} hours and {minutes} minutes")
@@ -339,30 +363,6 @@ if __name__ == "__main__":
                 else:
                     say("You have no saved notes")
                     print("No notes found")
-
-            # Calculator - Check for math expressions and spoken math words
-            elif (any(word in text_lower for word in ["calculate", "what is", "solve", "plus", "minus", "times", "multiply", "divide", "add", "subtract"])
-                  or re.match(r'^[\d\s+\-*/().]+$', recognise_text.strip())):
-                expr = parse_calculation(recognise_text)
-                if expr:
-                    result = calculate(expr)
-                    if result is not None:
-                        say(f"The answer is {result}")
-                        print(f"Calculation: {expr} = {result}")
-                    else:
-                        say("I couldn't calculate that")
-                else:
-                    # If parse failed, it might be an AI question starting with "what is"
-                    if "what is" in text_lower and not any(op in text_lower for op in ["plus", "minus", "times", "multiply", "divide", "+", "-", "*", "/"]):
-                        # Pass to AI instead
-                        print(f"AI Query: {recognise_text}")
-                        response = ai(prompt=recognise_text)
-                        if response:
-                            say(response)
-                        else:
-                            say("I'm having trouble connecting to AI services. Please check the API key in config.py")
-                    else:
-                        say("Please provide a calculation")
 
             # File Operations
             elif "list files" in text_lower:
