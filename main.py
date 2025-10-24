@@ -3,15 +3,15 @@ import speech_recognition as sr
 import webbrowser
 import datetime
 import subprocess
-import openai
+from openai import OpenAI
 from config import apikey
 
 
 def ai(prompt):
-    openai.api_key = apikey
+    client = OpenAI(api_key=apikey)
 
     try:
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo-16k",
             messages=[
                 {"role": "user", "content": prompt}
@@ -22,7 +22,7 @@ def ai(prompt):
             frequency_penalty=0,
             presence_penalty=0
         )
-        print(response.choices[0].message["content"])
+        print(response.choices[0].message.content)
     except Exception as e:
         print("Error with AI request:", e)
 def recognised_speech_from_microphone():
